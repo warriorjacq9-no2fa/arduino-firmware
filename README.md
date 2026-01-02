@@ -16,8 +16,11 @@ To build, use `make`. To flash a board, follow these steps:
 
 I will make an Arduino library for this firmware soon, but in the meantime, here is a simple function that types a given string:
 
+<div style="max-height: 300px; overflow: auto;">
+
 ```c
 #define CMD_KBD 0xFE
+#define HID_MOD_LSHIFT 0x02
 
 void type(const char *s)
 {
@@ -99,6 +102,8 @@ void type(const char *s)
     }
 }
 ```
+
+</div>
 
 This code does several things. First, it iterates through the input string and converts each character to a scancode and modifier code. The reference for these codes can be found in the [USB HID Usage Tables](https://usb.org/sites/default/files/hut1_6.pdf), page 89. Modifier format is defined in [USB HID Device Class Definition](https://www.usb.org/sites/default/files/documents/hid1_11.pdf), page 66. Then, it sends the keyboard mode byte, 0xFE, over serial, immediately followed by the amount of bytes to follow which are keypresses/modifier bytes. Then, it sends each key/mod combo with the modifier byte first and the scancode second.
 
