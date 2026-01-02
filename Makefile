@@ -11,16 +11,19 @@
 
 # Run "make help" for target help.
 
+LUFA_PATH    = $(HOME)/lufa/LUFA
+BOARD_NAME	 = ARDUINO_MEGA
+
+
+
 MCU          = atmega16u2
 ARCH         = AVR8
-BOARD        = USER
-BOARD_NAME	 = ARDUINO_MEGA
 F_CPU        = 16000000
 F_USB        = $(F_CPU)
+BOARD        = USER
 OPTIMIZATION = s
 TARGET       = firmware
 SRC          = $(TARGET).c Descriptors.c $(LUFA_SRC_USB) $(LUFA_SRC_USBCLASS)
-LUFA_PATH    = $(HOME)/lufa/LUFA
 CC_FLAGS     = -DUSE_LUFA_CONFIG_HEADER -D$(BOARD_NAME) -IConfig/ -Wall -Wextra
 LD_FLAGS     =
 

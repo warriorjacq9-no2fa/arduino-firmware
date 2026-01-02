@@ -75,7 +75,11 @@ const USB_Descriptor_Device_t PROGMEM DeviceDescriptor =
 
 	.VendorID               = 0x2341, // Arduino
 
-	.ProductID          	= 0x0010, // Mega R3
+#if defined(ARDUINO_UNO)
+	.ProductID          	= 0x0001, // Uno R3
+#elif defined (ARDUINO_MEGA)
+	.ProductID				= 0x0010, // Mega 2560
+#endif
 	.ReleaseNumber          = VERSION_BCD(0,0,1),
 
 	.ManufacturerStrIndex   = STRING_ID_Manufacturer,
