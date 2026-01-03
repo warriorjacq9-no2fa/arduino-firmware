@@ -64,7 +64,8 @@
 		#define LEDMASK_USB_ERROR       (LEDS_LED1 | LEDS_LED3)
 
 		/** Command byte to indicate keyboard commands */
-		#define CMD_KBD					0xFE
+		#define CMD_KBD_STRING			0xFE
+		#define CMD_KBD_REPORT			0xFD
 
 	/* Function Prototypes: */
 		void SetupHardware(void);

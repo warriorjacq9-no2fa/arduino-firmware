@@ -40,13 +40,13 @@
 static RingBuffer_t USBtoUSART_Buffer;
 
 /** Underlying data buffer for \ref USBtoUSART_Buffer, where the stored bytes are located. */
-static uint8_t      USBtoUSART_Buffer_Data[64];
+static uint8_t      USBtoUSART_Buffer_Data[32];
 
 /** Circular buffer to hold data from the serial port before it is sent to the host. */
 static RingBuffer_t USARTtoUSB_Buffer;
 
 /** Underlying data buffer for \ref USARTtoUSB_Buffer, where the stored bytes are located. */
-static uint8_t      USARTtoUSB_Buffer_Data[64];
+static uint8_t      USARTtoUSB_Buffer_Data[32];
 
 static uint8_t		LEDTimer_TX = 0;
 static uint8_t		LEDTimer_RX = 0;
@@ -55,7 +55,7 @@ static uint8_t		LEDTimer_RX = 0;
 static uint8_t PrevKeyboardHIDReportBuffer[sizeof(USB_KeyboardReport_Data_t)];
 
 static RingBuffer_t USARTtoKBD_Buffer;
-static uint8_t 		USARTtoKBD_Buffer_Data[32];
+static uint8_t		USARTtoKBD_Buffer_Data[128];
 
 /** LUFA CDC Class driver interface configuration and state information. This structure is
  *  passed to all CDC Class driver functions, so that multiple instances of the same class
@@ -256,47 +256,6 @@ void EVENT_USB_Device_StartOfFrame(void)
 	HID_Device_MillisecondElapsed(&Keyboard_HID_Interface);
 }
 
-/** HID class driver callback function for the creation of HID reports to the host.
- *
- *  \param[in]     HIDInterfaceInfo  Pointer to the HID class interface configuration structure being referenced
- *  \param[in,out] ReportID    Report ID requested by the host if non-zero, otherwise callback should set to the generated report ID
- *  \param[in]     ReportType  Type of the report to create, either HID_REPORT_ITEM_In or HID_REPORT_ITEM_Feature
- *  \param[out]    ReportData  Pointer to a buffer where the created report should be stored
- *  \param[out]    ReportSize  Number of bytes written in the report (or zero if no report is to be sent)
- *
- *  \return Boolean \c true to force the sending of the report, \c false to let the library determine if it needs to be sent
- */
-bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDInterfaceInfo,
-                                         uint8_t* const ReportID,
-                                         const uint8_t ReportType,
-                                         void* ReportData,
-                                         uint16_t* const ReportSize)
-{
-	USB_KeyboardReport_Data_t* KeyboardReport = (USB_KeyboardReport_Data_t*)ReportData;
-
-	uint8_t KeyIndex = 0;
-
-	uint16_t BufferCount = RingBuffer_GetCount(&USARTtoKBD_Buffer);
-	if (BufferCount)
-	{
-		/* We can only send as many keypresses as our report allows simultaneously */
-		/* The value here is 12 because every odd byte is a modifier */
-		uint8_t BytesToSend = MIN(BufferCount, 12) / 2;
-
-		while (BytesToSend--)
-		{
-			KeyboardReport->Modifier = RingBuffer_Peek(&USARTtoKBD_Buffer);
-			RingBuffer_Remove(&USARTtoKBD_Buffer);
-
-			KeyboardReport->KeyCode[KeyIndex++] = RingBuffer_Peek(&USARTtoKBD_Buffer);
-			RingBuffer_Remove(&USARTtoKBD_Buffer);
-		}
-	}
-
-	*ReportSize = sizeof(USB_KeyboardReport_Data_t);
-	return false;
-}
-
 /** HID class driver callback function for the processing of HID reports from the host.
  *
  *  \param[in] HIDInterfaceInfo  Pointer to the HID class interface configuration structure being referenced
@@ -325,13 +284,65 @@ void CALLBACK_HID_Device_ProcessHIDReport(USB_ClassInfo_HID_Device_t* const HIDI
 
 enum USART_State {
 	STATE_IDLE,
-	STATE_GETLEN,
+	STATE_S_GETLEN,
 	STATE_PROCESS,
 };
 
+enum HID_State {
+	STATE_STRING,
+	STATE_REPORT,
+};
+
 static enum USART_State ustate = STATE_IDLE;
+static enum HID_State hstate = STATE_STRING;
+
 /** The amount of keyboard commands remaining on serial */
 static uint8_t 		KBDCommandCount = 0;
+
+/** HID class driver callback function for the creation of HID reports to the host.
+ *
+ *  \param[in]     HIDInterfaceInfo  Pointer to the HID class interface configuration structure being referenced
+ *  \param[in,out] ReportID    Report ID requested by the host if non-zero, otherwise callback should set to the generated report ID
+ *  \param[in]     ReportType  Type of the report to create, either HID_REPORT_ITEM_In or HID_REPORT_ITEM_Feature
+ *  \param[out]    ReportData  Pointer to a buffer where the created report should be stored
+ *  \param[out]    ReportSize  Number of bytes written in the report (or zero if no report is to be sent)
+ *
+ *  \return Boolean \c true to force the sending of the report, \c false to let the library determine if it needs to be sent
+ */
+bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDInterfaceInfo,
+                                         uint8_t* const ReportID,
+                                         const uint8_t ReportType,
+                                         void* ReportData,
+                                         uint16_t* const ReportSize)
+{
+	USB_KeyboardReport_Data_t* KeyboardReport = (USB_KeyboardReport_Data_t*)ReportData;
+
+	uint8_t KeyIndex = 0;
+
+	uint16_t BufferCount = RingBuffer_GetCount(&USARTtoKBD_Buffer);
+	switch(hstate) {
+		case STATE_STRING:
+			if(BufferCount >= 2) {
+				KeyboardReport->Modifier = RingBuffer_Peek(&USARTtoKBD_Buffer);
+				RingBuffer_Remove(&USARTtoKBD_Buffer);
+
+				KeyboardReport->KeyCode[0] = RingBuffer_Peek(&USARTtoKBD_Buffer);
+				RingBuffer_Remove(&USARTtoKBD_Buffer);
+			}
+			break;
+		case STATE_REPORT:
+			if(BufferCount >= 7) {
+				KeyboardReport->Modifier = RingBuffer_Peek(&USARTtoKBD_Buffer);
+				for(int i = 0; i < 6; i++) {
+					KeyboardReport->KeyCode[i] = RingBuffer_Peek(&USARTtoKBD_Buffer);
+				}
+			}
+			break;
+	}
+
+	*ReportSize = sizeof(USB_KeyboardReport_Data_t);
+	return false;
+}
 
 /** ISR to manage the reception of data from the serial port, placing received bytes into a circular buffer
  *  for later transmission to the host.
@@ -342,8 +353,16 @@ ISR(USART1_RX_vect, ISR_BLOCK)
 
 	switch(ustate){
 		case STATE_IDLE:
-			if (ReceivedByte == CMD_KBD) {
-				ustate = STATE_GETLEN;
+			if (ReceivedByte == CMD_KBD_STRING) {
+				ustate = STATE_S_GETLEN;
+				hstate = STATE_STRING;
+				break;
+			} else if (ReceivedByte == CMD_KBD_REPORT) {
+				for(int i = 0; i < RingBuffer_GetCount(&USARTtoKBD_Buffer); i++)
+					RingBuffer_Remove(&USARTtoKBD_Buffer);
+				KBDCommandCount = 6;
+				ustate = STATE_PROCESS;
+				hstate = STATE_REPORT;
 				break;
 			}
 			if ((USB_DeviceState == DEVICE_STATE_Configured) && !(RingBuffer_IsFull(&USARTtoUSB_Buffer))) {
@@ -352,7 +371,7 @@ ISR(USART1_RX_vect, ISR_BLOCK)
 				RingBuffer_Insert(&USARTtoUSB_Buffer, ReceivedByte);
 			}
 			break;
-		case STATE_GETLEN:
+		case STATE_S_GETLEN:
 			KBDCommandCount = ReceivedByte;
 			ustate = STATE_PROCESS;
 			break;
