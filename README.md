@@ -14,4 +14,4 @@ To build, use `make`. To flash a board, follow these steps:
 
 # Usage
 
-I also wrote an API library for Arduino IDE, that can be found at github.com/warriorjacq9-no2fa/arduino-firmware-api
+I also wrote an API library for Arduino IDE, that can be found at [warriorjac9-no2fa/arduino-firmware-api](https://github.com/warriorjacq9-no2fa/arduino-firmware-api)
