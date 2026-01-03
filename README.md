@@ -87,7 +87,7 @@ void type(const char *s)
                 case '?': scancode = 0x38; modifier = HID_MOD_LSHIFT; break;
 
                 default:
-                    return 0; // Not a printable ASCII character
+                    break; // Not a printable ASCII character
             }
         }
 
