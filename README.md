@@ -4,7 +4,7 @@ The object of this project is to provide firmware for the USB-to-Serial chip (co
 
 # Building
 
-Before building, edit the Makefile to set the BOARD_NAME variable to your target Arduino board, currently either ARDUINO_UNO or ARDUINO_MEGA. Also, set LUFA_PATH to the absolute path of the LUFA library, which can be found [here](https://github.com/abcminiuser/lufa).
+Before building, edit the Makefile to set the BOARD_NAME variable to your target Arduino board, currently either `ARDUINO_UNO` or `ARDUINO_MEGA`, and set MCU to the USBtoSerial chip on your target Arduino board, `atmega16u2` for UNO R3 and Mega 2560, `atmega8u2` for the others. Also, set LUFA_PATH to the absolute path of the LUFA library, which can be found [here](https://github.com/abcminiuser/lufa).
 To build, use `make`. To flash a board, follow these steps:
  - Plug the board in via USB
  - Put the board into DFU mode. This is done by shorting together the reset and ground pins on the ICSP header (the two pins closest to the USB connector):

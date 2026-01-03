@@ -13,10 +13,10 @@
 
 LUFA_PATH    = $(HOME)/lufa/LUFA
 BOARD_NAME	 = ARDUINO_MEGA
+MCU          = atmega16u2
 
 
 
-MCU          = atmega8u2
 ARCH         = AVR8
 F_CPU        = 16000000
 F_USB        = $(F_CPU)
