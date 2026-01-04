@@ -333,8 +333,10 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
 		case STATE_REPORT:
 			if(BufferCount >= 7) {
 				KeyboardReport->Modifier = RingBuffer_Peek(&USARTtoKBD_Buffer);
+				RingBuffer_Remove(&USARTtoKBD_Buffer);
 				for(int i = 0; i < 6; i++) {
 					KeyboardReport->KeyCode[i] = RingBuffer_Peek(&USARTtoKBD_Buffer);
+					RingBuffer_Remove(&USARTtoKBD_Buffer);
 				}
 			}
 			break;
@@ -358,9 +360,7 @@ ISR(USART1_RX_vect, ISR_BLOCK)
 				hstate = STATE_STRING;
 				break;
 			} else if (ReceivedByte == CMD_KBD_REPORT) {
-				for(int i = 0; i < RingBuffer_GetCount(&USARTtoKBD_Buffer); i++)
-					RingBuffer_Remove(&USARTtoKBD_Buffer);
-				KBDCommandCount = 6;
+				KBDCommandCount = 7;
 				ustate = STATE_PROCESS;
 				hstate = STATE_REPORT;
 				break;
