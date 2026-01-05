@@ -1,13 +1,5 @@
 /*
-             LUFA Library
-     Copyright (C) Dean Camera, 2021.
-
-  dean [at] fourwalledcubicle [dot] com
-           www.lufa-lib.org
-*/
-
-/*
-  Copyright 2021  Dean Camera (dean [at] fourwalledcubicle [dot] com)
+  Copyright 2026  Jack Flusche (jackflusche@gmail.com)
 
   Permission to use, copy, modify, distribute, and sell this
   software and its documentation for any purpose is hereby granted
@@ -26,11 +18,14 @@
   in an action of contract, negligence or other tortious action,
   arising out of or in connection with the use or performance of
   this software.
+
+  This software is under the GNU AGPLv3 license,
+  see the LICENSE file at project root
 */
 
 /** \file
  *
- *  Header file for USBtoSerial.c.
+ *  Header file for firmware.c.
  */
 
 #ifndef _USB_SERIAL_H_
