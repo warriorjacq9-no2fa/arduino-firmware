@@ -185,17 +185,17 @@ int main(void)
 		  	Serial_SendByte(RingBuffer_Remove(&USBtoUSART_Buffer));
 
 		if(LEDTimer_TX)
-			LEDs_TurnOnLEDs(LEDS_LED1);
+			LEDs_TurnOnLEDs(LEDS_LED1); // TX
 		else
 			LEDs_TurnOffLEDs(LEDS_LED1);
 		
 		if(LEDTimer_RX)
-			LEDs_TurnOnLEDs(LEDS_LED2);
+			LEDs_TurnOnLEDs(LEDS_LED2); // RX
 		else
 			LEDs_TurnOffLEDs(LEDS_LED2);
 
-		CDC_Device_USBTask(&VirtualSerial_CDC_Interface);
 		HID_Device_USBTask(&Keyboard_HID_Interface);
+		CDC_Device_USBTask(&VirtualSerial_CDC_Interface);
 		USB_USBTask();
 	}
 }
@@ -218,6 +218,26 @@ void SetupHardware(void)
 	LEDs_Init();
 	USB_Init();
 
+	/* Initialize USART1 */
+	/* Keep the TX line held high (idle) while the USART is reconfigured */
+	PORTD |= (1 << 3);
+
+	/* Must turn off USART before reconfiguring it, otherwise incorrect operation may occur */
+	UCSR1B = 0;
+	UCSR1A = 0;
+	UCSR1C = 0;
+
+	// 9600 baud default
+	UBRR1  = SERIAL_2X_UBBRVAL(9600);
+
+	UCSR1C = (1 << UCSZ11) | (1 << UCSZ10);
+	UCSR1A = (1 << U2X1);
+	UCSR1B = (1 << RXCIE1) | (1 << TXEN1) | (1 << RXEN1);
+
+	/* Release the TX line after the USART has been reconfigured */
+	PORTD &= ~(1 << 3);
+
+
 	/* Pull target /RESET line high */
 	PORTD |= (1 << 7);
 	DDRD  |= (1 << 7);
@@ -229,31 +249,64 @@ void EVENT_USB_Device_ConfigurationChanged(void)
     bool ConfigSuccess = true;
 
     ConfigSuccess &= CDC_Device_ConfigureEndpoints(&VirtualSerial_CDC_Interface);
-    
-    // Add diagnostic - blink LED or set a flag if this fails
     bool HIDSuccess = HID_Device_ConfigureEndpoints(&Keyboard_HID_Interface);
     ConfigSuccess &= HIDSuccess;
     
-    if (!HIDSuccess) {
-        // HID endpoint configuration failed
-        LEDs_SetAllLEDs(LEDS_LED1 | LEDS_LED3); // Error indication
+    if (!HIDSuccess || !ConfigSuccess) {
+        LEDs_SetAllLEDs(LEDS_LED1 | LEDS_LED3);
     }
     
-    if (ConfigSuccess)
-        USB_Device_EnableSOFEvents();
+    USB_Device_EnableSOFEvents();
 }
+
 
 /** Event handler for the library USB Control Request reception event. */
 void EVENT_USB_Device_ControlRequest(void)
 {
-	CDC_Device_ProcessControlRequest(&VirtualSerial_CDC_Interface);
+	// Handle HID-specific requests first
+	if ((USB_ControlRequest.bmRequestType & CONTROL_REQTYPE_RECIPIENT) == REQREC_INTERFACE)
+	{
+		// Check if request is for HID interface
+		if ((USB_ControlRequest.wIndex & 0xFF) == INTERFACE_ID_HID)
+		{
+			switch (USB_ControlRequest.bRequest)
+			{
+				case HID_REQ_SetIdle:
+					Endpoint_ClearSETUP();
+					Endpoint_ClearStatusStage();
+					return;
+			}
+		}
+	}
+	
+	// Let class drivers handle their requests
 	HID_Device_ProcessControlRequest(&Keyboard_HID_Interface);
+	CDC_Device_ProcessControlRequest(&VirtualSerial_CDC_Interface);
 }
 
 /** Event handler for the USB device Start Of Frame event. */
+static bool HIDPrimed = false;
+
 void EVENT_USB_Device_StartOfFrame(void)
 {
-	HID_Device_MillisecondElapsed(&Keyboard_HID_Interface);
+    HID_Device_MillisecondElapsed(&Keyboard_HID_Interface);
+
+    if ((USB_DeviceState == DEVICE_STATE_Configured) && !HIDPrimed)
+    {
+        USB_KeyboardReport_Data_t EmptyReport = {0};
+
+        Endpoint_SelectEndpoint(KBD_EPADDR);
+
+        if (Endpoint_IsINReady())
+        {
+            Endpoint_Write_Stream_LE(&EmptyReport,
+                                     sizeof(EmptyReport),
+                                     NULL);
+            Endpoint_ClearIN();
+
+            HIDPrimed = true;
+        }
+    }
 }
 
 /** HID class driver callback function for the processing of HID reports from the host.
@@ -318,14 +371,13 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
 	USB_KeyboardReport_Data_t* KeyboardReport = (USB_KeyboardReport_Data_t*)ReportData;
 
 	uint8_t KeyIndex = 0;
-
 	uint16_t BufferCount = RingBuffer_GetCount(&USARTtoKBD_Buffer);
+	
 	switch(hstate) {
 		case STATE_STRING:
 			if(BufferCount >= 2) {
 				KeyboardReport->Modifier = RingBuffer_Peek(&USARTtoKBD_Buffer);
 				RingBuffer_Remove(&USARTtoKBD_Buffer);
-
 				KeyboardReport->KeyCode[0] = RingBuffer_Peek(&USARTtoKBD_Buffer);
 				RingBuffer_Remove(&USARTtoKBD_Buffer);
 			}
@@ -449,9 +501,9 @@ void EVENT_CDC_Device_ControLineStateChanged(
 
     if (CurrentDTRState) {
         PORTD &= ~(1 << 7);   // DTR asserted = RESET low
-		LEDs_TurnOnLEDs(LEDS_LED1 | LEDS_LED2);
+		LEDTimer_TX = 5;
 	} else {
         PORTD |= (1 << 7);    // DTR deasserted = RESET high
-		LEDs_TurnOffLEDs(LEDS_LED1 | LEDS_LED2);
+		LEDTimer_RX = 5;
 	}
 }

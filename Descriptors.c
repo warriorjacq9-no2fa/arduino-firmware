@@ -67,13 +67,13 @@ const USB_Descriptor_Device_t PROGMEM DeviceDescriptor =
 	.Header                 = {.Size = sizeof(USB_Descriptor_Device_t), .Type = DTYPE_Device},
 
 	.USBSpecification       = VERSION_BCD(1,1,0),
-	.Class                  = USB_CSCP_NoDeviceClass,
-	.SubClass               = USB_CSCP_NoDeviceSubclass,
-	.Protocol               = USB_CSCP_NoDeviceProtocol,
+	.Class                  = USB_CSCP_IADDeviceClass,
+	.SubClass               = USB_CSCP_IADDeviceSubclass,
+	.Protocol               = USB_CSCP_IADDeviceProtocol,
 
 	.Endpoint0Size          = FIXED_CONTROL_ENDPOINT_SIZE,
 
-	.VendorID               = 0x2341, // Arduino
+	.VendorID               = 0x1209, // pid.codes
 
 #if defined(ARDUINO_UNO)
 	.ProductID          	= 0x0001, // Uno R3
@@ -111,16 +111,54 @@ const USB_Descriptor_Configuration_t PROGMEM ConfigurationDescriptor =
 			.MaxPowerConsumption    = USB_CONFIG_POWER_MA(100)
 		},
 	
+	.HID_Interface = 
+		{
+			.Header					= {.Size = sizeof(USB_Descriptor_Interface_t), .Type = DTYPE_Interface},
+
+			.InterfaceNumber 		= INTERFACE_ID_HID,
+			.AlternateSetting		= 0,
+
+			.TotalEndpoints			= 1,
+			
+			.Class					= HID_CSCP_HIDClass,
+			.SubClass				= HID_CSCP_BootSubclass,
+			.Protocol				= HID_CSCP_KeyboardBootProtocol,
+
+			.InterfaceStrIndex		= NO_DESCRIPTOR
+		},
+	
+	.HID_KeyboardHID = 
+		{
+			.Header					= {.Size = sizeof(USB_HID_Descriptor_HID_t), .Type = HID_DTYPE_HID},
+
+			.HIDSpec				= VERSION_BCD(1,1,1),
+			.CountryCode			= NO_DESCRIPTOR,
+			.TotalReportDescriptors = 1,
+			.HIDReportType			= HID_DTYPE_Report,
+			.HIDReportLength		= sizeof(KeyboardReport)
+		},
+	
+	.HID_ReportInEndpoint = 
+		{
+			.Header					= {.Size = sizeof(USB_Descriptor_Endpoint_t), .Type = DTYPE_Endpoint},
+
+			.EndpointAddress		= KBD_EPADDR,
+			.Attributes				= (EP_TYPE_INTERRUPT | ENDPOINT_ATTR_NO_SYNC | ENDPOINT_USAGE_DATA),
+			.EndpointSize			= KBD_EPSIZE,
+			.PollingIntervalMS		= 0x01
+
+		},
+	
 	.CDC_IAD = 
 		{
 			.Header					= {.Size = sizeof(USB_Descriptor_Interface_Association_t), .Type = DTYPE_InterfaceAssociation},
 			
-			.FirstInterfaceIndex	= 0,
+			.FirstInterfaceIndex	= INTERFACE_ID_CDC_CCI,
 			.TotalInterfaces		= 2,
 
 			.Class					= CDC_CSCP_CDCClass,
-			.SubClass				= CDC_CSCP_NoSpecificSubclass,
-			.Protocol				= CDC_CSCP_NoSpecificProtocol,
+			.SubClass				= CDC_CSCP_ACMSubclass,
+			.Protocol				= CDC_CSCP_ATCommandProtocol,
 
 			.IADStrIndex			= NO_DESCRIPTOR
 		},
@@ -199,7 +237,7 @@ const USB_Descriptor_Configuration_t PROGMEM ConfigurationDescriptor =
 			.EndpointAddress        = CDC_RX_EPADDR,
 			.Attributes             = (EP_TYPE_BULK | ENDPOINT_ATTR_NO_SYNC | ENDPOINT_USAGE_DATA),
 			.EndpointSize           = CDC_TXRX_EPSIZE,
-			.PollingIntervalMS      = 0x05
+			.PollingIntervalMS      = 0x01
 		},
 
 	.CDC_DataInEndpoint =
@@ -209,45 +247,7 @@ const USB_Descriptor_Configuration_t PROGMEM ConfigurationDescriptor =
 			.EndpointAddress        = CDC_TX_EPADDR,
 			.Attributes             = (EP_TYPE_BULK | ENDPOINT_ATTR_NO_SYNC | ENDPOINT_USAGE_DATA),
 			.EndpointSize           = CDC_TXRX_EPSIZE,
-			.PollingIntervalMS      = 0x05
-		},
-	
-	.HID_Interface = 
-		{
-			.Header					= {.Size = sizeof(USB_Descriptor_Interface_t), .Type = DTYPE_Interface},
-
-			.InterfaceNumber 		= INTERFACE_ID_HID,
-			.AlternateSetting		= 0,
-
-			.TotalEndpoints			= 1,
-			
-			.Class					= HID_CSCP_HIDClass,
-			.SubClass				= HID_CSCP_BootSubclass,
-			.Protocol				= HID_CSCP_KeyboardBootProtocol,
-
-			.InterfaceStrIndex		= NO_DESCRIPTOR
-		},
-	
-	.HID_KeyboardHID = 
-		{
-			.Header					= {.Size = sizeof(USB_HID_Descriptor_HID_t), .Type = HID_DTYPE_HID},
-
-			.HIDSpec				= VERSION_BCD(1,1,1),
-			.CountryCode			= NO_DESCRIPTOR,
-			.TotalReportDescriptors = 1,
-			.HIDReportType			= HID_DTYPE_Report,
-			.HIDReportLength		= sizeof(KeyboardReport)
-		},
-	
-	.HID_ReportInEndpoint = 
-		{
-			.Header					= {.Size = sizeof(USB_Descriptor_Endpoint_t), .Type = DTYPE_Endpoint},
-
-			.EndpointAddress		= KBD_EPADDR,
-			.Attributes				= (EP_TYPE_INTERRUPT | ENDPOINT_ATTR_NO_SYNC | ENDPOINT_USAGE_DATA),
-			.EndpointSize			= KBD_EPSIZE,
-			.PollingIntervalMS		= 0x05
-
+			.PollingIntervalMS      = 0x01
 		}
 };
 _Static_assert(sizeof(USB_Descriptor_Configuration_t) == 
