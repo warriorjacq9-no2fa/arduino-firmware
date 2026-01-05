@@ -43,14 +43,19 @@ static RingBuffer_t USARTtoUSB_Buffer;
 /** Underlying data buffer for \ref USARTtoUSB_Buffer, where the stored bytes are located. */
 static uint8_t      USARTtoUSB_Buffer_Data[32];
 
-static uint8_t		LEDTimer_TX = 0;
-static uint8_t		LEDTimer_RX = 0;
+/** LED decay timers, decremented every 1ms */
+static volatile uint8_t	LEDTimer_TX = 0;
+static volatile uint8_t LEDTimer_RX = 0;
 
 /** Buffer to hold the previously generated Keyboard HID report, for comparison purposes inside the HID class driver. */
 static uint8_t PrevKeyboardHIDReportBuffer[sizeof(USB_KeyboardReport_Data_t)];
 
+/** Circular buffer to hold data for the HID interface until it is acted on */
 static RingBuffer_t USARTtoKBD_Buffer;
 static uint8_t		USARTtoKBD_Buffer_Data[128];
+
+/** Tracks the SET_IDLE state of the HID interface */
+static volatile bool 	HIDIsIdle = false;
 
 /** LUFA CDC Class driver interface configuration and state information. This structure is
  *  passed to all CDC Class driver functions, so that multiple instances of the same class
@@ -103,8 +108,8 @@ USB_ClassInfo_HID_Device_t Keyboard_HID_Interface =
 	};
 
 void timer1_init(void) {
-    TCCR1A = (1 << WGM11);        // CTC mode
-    TCCR1B = (1 << CS11) | (1 << CS10); // Prescaler 64
+    TCCR1A = 0;
+    TCCR1B = (1 << WGM12) | (1 << CS11) | (1 << CS10); // CTC mode, Prescaler 64
     OCR1A = 249;                 // 1 ms (16MHz / 64 / 1000 - 1)
     TIMSK1 = (1 << OCIE1A);       // Enable compare interrupt
 }
@@ -112,10 +117,12 @@ void timer1_init(void) {
 ISR(TIMER1_COMPA_vect) {
     if (LEDTimer_RX > 0) {
         LEDTimer_RX--;
-    }
+		LEDs_TurnOnLEDs(LEDS_LED2);
+    } else LEDs_TurnOffLEDs(LEDS_LED2);
     if (LEDTimer_TX > 0) {
         LEDTimer_TX--;
-    }
+		LEDs_TurnOnLEDs(LEDS_LED1);
+    } else LEDs_TurnOffLEDs(LEDS_LED1);
 }
 
 /** Main program entry point. This routine contains the overall program flow, including initial
@@ -179,16 +186,6 @@ int main(void)
 		if (Serial_IsSendReady() && !(RingBuffer_IsEmpty(&USBtoUSART_Buffer)))
 		  	Serial_SendByte(RingBuffer_Remove(&USBtoUSART_Buffer));
 
-		if(LEDTimer_TX)
-			LEDs_TurnOnLEDs(LEDS_LED1); // TX
-		else
-			LEDs_TurnOffLEDs(LEDS_LED1);
-		
-		if(LEDTimer_RX)
-			LEDs_TurnOnLEDs(LEDS_LED2); // RX
-		else
-			LEDs_TurnOffLEDs(LEDS_LED2);
-
 		HID_Device_USBTask(&Keyboard_HID_Interface);
 		CDC_Device_USBTask(&VirtualSerial_CDC_Interface);
 		USB_USBTask();
@@ -208,7 +205,7 @@ void SetupHardware(void)
 #endif
 
 	/* Hardware Initialization */
-	Serial_Init(115200, false);
+	Serial_Init(9600, false);
 	timer1_init();
 	LEDs_Init();
 	USB_Init();
@@ -267,6 +264,7 @@ void EVENT_USB_Device_ControlRequest(void)
 			switch (USB_ControlRequest.bRequest)
 			{
 				case HID_REQ_SetIdle:
+					HIDIsIdle = true;
 					Endpoint_ClearSETUP();
 					Endpoint_ClearStatusStage();
 					return;
@@ -280,28 +278,9 @@ void EVENT_USB_Device_ControlRequest(void)
 }
 
 /** Event handler for the USB device Start Of Frame event. */
-static bool HIDPrimed = false;
-
 void EVENT_USB_Device_StartOfFrame(void)
 {
     HID_Device_MillisecondElapsed(&Keyboard_HID_Interface);
-
-    if ((USB_DeviceState == DEVICE_STATE_Configured) && !HIDPrimed)
-    {
-        USB_KeyboardReport_Data_t EmptyReport = {0};
-
-        Endpoint_SelectEndpoint(KBD_EPADDR);
-
-        if (Endpoint_IsINReady())
-        {
-            Endpoint_Write_Stream_LE(&EmptyReport,
-                                     sizeof(EmptyReport),
-                                     NULL);
-            Endpoint_ClearIN();
-
-            HIDPrimed = true;
-        }
-    }
 }
 
 /** HID class driver callback function for the processing of HID reports from the host.
@@ -346,6 +325,7 @@ static enum HID_State hstate = STATE_STRING;
 
 /** The amount of keyboard commands remaining on serial */
 static uint8_t 		KBDCommandCount = 0;
+static bool 		SentInitial = false;
 
 /** HID class driver callback function for the creation of HID reports to the host.
  *
@@ -364,8 +344,17 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
                                          uint16_t* const ReportSize)
 {
 	USB_KeyboardReport_Data_t* KeyboardReport = (USB_KeyboardReport_Data_t*)ReportData;
+	memset(KeyboardReport, 0, sizeof(*KeyboardReport));
 
-	uint8_t KeyIndex = 0;
+	if (!HIDIsIdle) {
+		*ReportSize = 0;
+		return false;
+	} else if (!SentInitial) {
+		*ReportSize = sizeof(USB_KeyboardReport_Data_t);
+		SentInitial = true;
+		return true;
+	}
+
 	uint16_t BufferCount = RingBuffer_GetCount(&USARTtoKBD_Buffer);
 	
 	switch(hstate) {
@@ -390,7 +379,7 @@ bool CALLBACK_HID_Device_CreateHIDReport(USB_ClassInfo_HID_Device_t* const HIDIn
 	}
 
 	*ReportSize = sizeof(USB_KeyboardReport_Data_t);
-	return false;
+	return true;
 }
 
 /** ISR to manage the reception of data from the serial port, placing received bytes into a circular buffer
@@ -419,7 +408,7 @@ ISR(USART1_RX_vect, ISR_BLOCK)
 			}
 			break;
 		case STATE_S_GETLEN:
-			KBDCommandCount = ReceivedByte;
+			KBDCommandCount = MIN(ReceivedByte, sizeof(USARTtoKBD_Buffer_Data));
 			ustate = STATE_PROCESS;
 			break;
 		case STATE_PROCESS:
@@ -427,7 +416,7 @@ ISR(USART1_RX_vect, ISR_BLOCK)
 				LEDTimer_TX = 5;
 				RingBuffer_Insert(&USARTtoKBD_Buffer, ReceivedByte);
 
-				if(--KBDCommandCount == 0) ustate = STATE_IDLE;
+				if(KBDCommandCount > 0 && --KBDCommandCount == 0) ustate = STATE_IDLE;
 			}
 			break;
 	}
